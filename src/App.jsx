@@ -94,6 +94,7 @@ export default function App() {
   const activeCallRef = useRef(null);
   const micOnRef = useRef(micOn);
   const camOnRef = useRef(camOn);
+  const silentAudioRef = useRef(null);
   const toolsSheetVisible = useMountTransition(
     (isMobile || isTablet) && toolsOpen,
     300
@@ -193,6 +194,56 @@ export default function App() {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen !== "call") return;
+
+    const numSamples = 4410;
+    const sampleRate = 44100;
+    const buf = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buf);
+    view.setUint32(0, 0x52494646, false);
+    view.setUint32(4, 36 + numSamples * 2, true);
+    view.setUint32(8, 0x57415645, false);
+    view.setUint32(12, 0x666d7420, false);
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    view.setUint32(36, 0x64617461, false);
+    view.setUint32(40, numSamples * 2, true);
+
+    const url = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    const audio = new Audio(url);
+    audio.loop = true;
+    audio.volume = 0.001;
+    audio.play().catch(() => {});
+    silentAudioRef.current = audio;
+
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: "Звонок",
+        artist: "Talk",
+      });
+      navigator.mediaSession.playbackState = "playing";
+      navigator.mediaSession.setActionHandler("play", () => {});
+      navigator.mediaSession.setActionHandler("pause", () => {});
+    }
+
+    return () => {
+      audio.pause();
+      URL.revokeObjectURL(url);
+      silentAudioRef.current = null;
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = "none";
+        try { navigator.mediaSession.setActionHandler("play", null); } catch (e) {}
+        try { navigator.mediaSession.setActionHandler("pause", null); } catch (e) {}
+      }
+    };
   }, [screen]);
 
   useEffect(() => {
