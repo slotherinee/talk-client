@@ -199,31 +199,6 @@ export default function App() {
   useEffect(() => {
     if (screen !== "call") return;
 
-    const numSamples = 4410;
-    const sampleRate = 44100;
-    const buf = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buf);
-    view.setUint32(0, 0x52494646, false);
-    view.setUint32(4, 36 + numSamples * 2, true);
-    view.setUint32(8, 0x57415645, false);
-    view.setUint32(12, 0x666d7420, false);
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    view.setUint32(36, 0x64617461, false);
-    view.setUint32(40, numSamples * 2, true);
-
-    const url = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
-    const audio = new Audio(url);
-    audio.loop = true;
-    audio.volume = 0.001;
-    audio.play().catch(() => {});
-    silentAudioRef.current = audio;
-
     if ("mediaSession" in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: "Звонок",
@@ -235,9 +210,11 @@ export default function App() {
     }
 
     return () => {
-      audio.pause();
-      URL.revokeObjectURL(url);
-      silentAudioRef.current = null;
+      if (silentAudioRef.current) {
+        silentAudioRef.current.audio.pause();
+        URL.revokeObjectURL(silentAudioRef.current.url);
+        silentAudioRef.current = null;
+      }
       if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "none";
         try { navigator.mediaSession.setActionHandler("play", null); } catch (e) {}
@@ -994,7 +971,30 @@ export default function App() {
   };
 
   const startCall = async () => {
-    // Set up video stream for the call screen if not already done
+    const numSamples = 4410;
+    const sampleRate = 44100;
+    const wavBuf = new ArrayBuffer(44 + numSamples * 2);
+    const wavView = new DataView(wavBuf);
+    wavView.setUint32(0, 0x52494646, false);
+    wavView.setUint32(4, 36 + numSamples * 2, true);
+    wavView.setUint32(8, 0x57415645, false);
+    wavView.setUint32(12, 0x666d7420, false);
+    wavView.setUint32(16, 16, true);
+    wavView.setUint16(20, 1, true);
+    wavView.setUint16(22, 1, true);
+    wavView.setUint32(24, sampleRate, true);
+    wavView.setUint32(28, sampleRate * 2, true);
+    wavView.setUint16(32, 2, true);
+    wavView.setUint16(34, 16, true);
+    wavView.setUint32(36, 0x64617461, false);
+    wavView.setUint32(40, numSamples * 2, true);
+    const silentUrl = URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
+    const silentAudio = new Audio(silentUrl);
+    silentAudio.loop = true;
+    silentAudio.volume = 0.01;
+    silentAudio.play().catch(() => {});
+    silentAudioRef.current = { audio: silentAudio, url: silentUrl };
+
     if (localVideo.current && stream) localVideo.current.srcObject = stream;
 
     // Ensure socket is connected
@@ -1073,6 +1073,11 @@ export default function App() {
 
   const handleLeave = () => {
     activeCallRef.current = null;
+    if (silentAudioRef.current) {
+      silentAudioRef.current.audio.pause();
+      URL.revokeObjectURL(silentAudioRef.current.url);
+      silentAudioRef.current = null;
+    }
     try {
       const socket = getSocket();
       if (socket) socket.emit("leave", roomId);
