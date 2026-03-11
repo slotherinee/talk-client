@@ -83,12 +83,17 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatUnread, setChatUnread] = useState(0);
+  const [mediaError, setMediaError] = useState(null);
   const chatEndRef = useRef(null);
   const chatMobileContainerRef = useRef(null);
   const chatDesktopContainerRef = useRef(null);
   const chatMsgIdsRef = useRef(new Set());
   const chatHistoryRequestedRef = useRef(false);
   const localMsgCounterRef = useRef(0);
+  const iceCandidateBufferRef = useRef({});
+  const activeCallRef = useRef(null);
+  const micOnRef = useRef(micOn);
+  const camOnRef = useRef(camOn);
   const toolsSheetVisible = useMountTransition(
     (isMobile || isTablet) && toolsOpen,
     300
@@ -124,6 +129,72 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => { micOnRef.current = micOn; }, [micOn]);
+  useEffect(() => { camOnRef.current = camOn; }, [camOn]);
+
+  useEffect(() => {
+    if (screen !== "call") return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== "visible") return;
+
+      if (audioContextRef.current?.state === "suspended") {
+        try {
+          await audioContextRef.current.resume();
+        } catch (e) {}
+      }
+
+      if (micOnRef.current) {
+        const track = localAudioTrackRef.current;
+        if (!track || track.readyState === "ended") {
+          try {
+            const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const newTrack = s.getAudioTracks()[0];
+            localAudioTrackRef.current = newTrack;
+            Object.values(pcs.current).forEach((pc) => {
+              const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+              if (sender) sender.replaceTrack(newTrack).catch(() => {});
+            });
+            setStream((prev) => {
+              if (!prev) return new MediaStream([newTrack]);
+              return new MediaStream([
+                ...prev.getTracks().filter((t) => t.kind !== "audio"),
+                newTrack,
+              ]);
+            });
+          } catch (e) {}
+        }
+      }
+
+      if (camOnRef.current) {
+        const track = localVideoTrackRef.current;
+        if (!track || track.readyState === "ended") {
+          try {
+            const s = await navigator.mediaDevices.getUserMedia({
+              video: { width: 640, height: 360 },
+            });
+            const newTrack = s.getVideoTracks()[0];
+            localVideoTrackRef.current = newTrack;
+            Object.values(pcs.current).forEach((pc) => {
+              const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+              if (sender) sender.replaceTrack(newTrack).catch(() => {});
+            });
+            setStream((prev) => {
+              if (!prev) return new MediaStream([newTrack]);
+              return new MediaStream([
+                ...prev.getTracks().filter((t) => t.kind !== "video"),
+                newTrack,
+              ]);
+            });
+          } catch (e) {}
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [screen]);
+
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = "::-webkit-scrollbar { display: none; }";
@@ -154,6 +225,15 @@ export default function App() {
     if (socket._appListenersAdded) return;
     socket._appListenersAdded = true;
 
+    socket.on("connect", () => {
+      const call = activeCallRef.current;
+      if (!call) return;
+      const s = getSocket();
+      if (!s) return;
+      s.emit("join", call.roomId, call.username);
+      s.emit("set-muted", call.roomId, !micOnRef.current);
+    });
+
     const handleMembers = (list) => {
       const normalized = (list || []).map((item) =>
         typeof item === "string" ? { id: item, name: item } : item
@@ -178,6 +258,7 @@ export default function App() {
           state === "have-remote-offer"
         ) {
           await pc.setRemoteDescription(description);
+          await drainIceCandidates(fromId);
         } else {
           console.warn("Received answer in unexpected signaling state", state);
         }
@@ -188,10 +269,16 @@ export default function App() {
 
     socket.on("candidate", async (fromId, candidate) => {
       const pc = pcs.current[fromId];
-      if (pc)
-        try {
-          await pc.addIceCandidate(candidate);
-        } catch (e) {}
+      if (!pc || !pc.remoteDescription) {
+        if (!iceCandidateBufferRef.current[fromId]) {
+          iceCandidateBufferRef.current[fromId] = [];
+        }
+        iceCandidateBufferRef.current[fromId].push(candidate);
+        return;
+      }
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (e) {}
     });
     socket.on("room-join-ok", (info) => {
       if (info) {
@@ -578,6 +665,18 @@ export default function App() {
     return renegotiateWith(peerId, pcs, getSocket);
   };
 
+  const drainIceCandidates = async (peerId) => {
+    const pc = pcs.current[peerId];
+    if (!pc) return;
+    const buffer = iceCandidateBufferRef.current[peerId] || [];
+    iceCandidateBufferRef.current[peerId] = [];
+    for (const candidate of buffer) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (e) {}
+    }
+  };
+
   const addLocalTracksToPC = (pc) => {
     return addLocalTracksToPc(
       pc,
@@ -588,8 +687,8 @@ export default function App() {
     );
   };
 
-  const handleOfferFromPeer = (id, description) => {
-    return handleOffer(
+  const handleOfferFromPeer = async (id, description) => {
+    await handleOffer(
       id,
       description,
       pcs,
@@ -600,6 +699,7 @@ export default function App() {
       addLocalTracksToPC,
       getSocket
     );
+    await drainIceCandidates(id);
   };
 
   // Media control functions
@@ -619,7 +719,8 @@ export default function App() {
     pcs,
     renegotiateWithPeer,
     roomId,
-    getSocket
+    getSocket,
+    setMediaError
   );
 
   const toggleCam = async () => {
@@ -635,7 +736,8 @@ export default function App() {
       setStream,
       localVideo,
       pcs,
-      renegotiateWithPeer
+      renegotiateWithPeer,
+      setMediaError
     );
 
     await originalToggler();
@@ -859,9 +961,9 @@ export default function App() {
       "user"
     ).slice(0, 10);
     setUsername(finalName);
+    activeCallRef.current = { roomId, username: finalName };
     socket.emit("set-username", roomId, finalName);
 
-    // Join the room and establish peer connections
     socket.emit("join", roomId, finalName);
     const targetIds = members.map((m) => m.id).filter((id) => id !== socket.id);
     for (const memberId of targetIds) {
@@ -919,6 +1021,7 @@ export default function App() {
   };
 
   const handleLeave = () => {
+    activeCallRef.current = null;
     try {
       const socket = getSocket();
       if (socket) socket.emit("leave", roomId);
@@ -1080,6 +1183,7 @@ export default function App() {
         onAudioDeviceSelect={handleAudioDeviceSelect}
         onVideoDeviceSelect={handleVideoDeviceSelect}
         onInitializeDevices={initializeDevices}
+        mediaError={mediaError}
       />
     );
   }

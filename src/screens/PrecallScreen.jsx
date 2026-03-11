@@ -24,6 +24,7 @@ function PrecallScreen({
   onAudioDeviceSelect,
   onVideoDeviceSelect,
   onInitializeDevices,
+  mediaError,
 }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh bg-black px-4">
@@ -86,6 +87,12 @@ function PrecallScreen({
             onInitializeDevices={onInitializeDevices}
           />
         </div>
+
+        {mediaError && (
+          <div className="mb-4 rounded-lg bg-red-950 border border-red-800 px-4 py-3 text-sm text-red-300">
+            {mediaError}
+          </div>
+        )}
 
         <div className="mb-4 flex justify-center">
           {camOn ? (

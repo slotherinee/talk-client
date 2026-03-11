@@ -14,9 +14,11 @@ export const createMicToggler = (
   pcs,
   renegotiateWith,
   roomId,
-  socket
+  socket,
+  onError
 ) => {
   return async () => {
+    if (onError) onError(null);
     if (!micOn) {
       try {
         let micTrack = localAudioTrackRef.current;
@@ -103,6 +105,7 @@ export const createMicToggler = (
         }, 200);
       } catch (e) {
         console.error("Mic access error", e);
+        if (onError) onError("Нет доступа к микрофону. Проверьте разрешения в браузере.");
       }
     } else {
       if (stream) {
@@ -152,9 +155,11 @@ export const createCamToggler = (
   setStream,
   localVideo,
   pcs,
-  renegotiateWith
+  renegotiateWith,
+  onError
 ) => {
   return async () => {
+    if (onError) onError(null);
     if (!camOn) {
       try {
         let camTrack = localVideoTrackRef.current;
@@ -205,6 +210,7 @@ export const createCamToggler = (
         }, 200);
       } catch (e) {
         console.error("Camera access error", e);
+        if (onError) onError("Нет доступа к камере. Проверьте разрешения в браузере.");
       }
     } else {
       if (stream) {
