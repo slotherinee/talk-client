@@ -1,14 +1,15 @@
-export const createPeerConnectionFor = (
+export const createPeerConnectionFor = async (
   id,
   getSocket,
   politeRef,
   pcs,
   setRemoteStreams,
   setupRemoteAnalyser,
-  watchRemoteStream
+  watchRemoteStream,
+  iceServers
 ) => {
   const pc = new RTCPeerConnection({
-    iceServers: [
+    iceServers: iceServers || [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
     ],

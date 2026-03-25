@@ -41,6 +41,7 @@ export default function App() {
   const [micLevel, setMicLevel] = useState(0);
   const localVideo = useRef();
   const pcs = useRef({});
+  const iceServersRef = useRef([]);
   const localAudioTrackRef = useRef(null);
   const localVideoTrackRef = useRef(null);
   const makingOfferRef = useRef({});
@@ -253,11 +254,24 @@ export default function App() {
     if (socket._appListenersAdded) return;
     socket._appListenersAdded = true;
 
-    socket.on("connect", () => {
+    socket.on("connect", async () => {
       const call = activeCallRef.current;
       if (!call) return;
       const s = getSocket();
       if (!s) return;
+
+      // Fetch ICE servers from backend
+      try {
+        const base = import.meta.env.VITE_API_URL || "";
+        const response = await fetch(`${base}/api/ice-servers`);
+        const data = await response.json();
+        if (data.iceServers && Array.isArray(data.iceServers)) {
+          iceServersRef.current = data.iceServers;
+        }
+      } catch (e) {
+        console.warn("Failed to fetch ICE servers:", e);
+      }
+
       s.emit("join", call.roomId, call.username);
       s.emit("set-muted", call.roomId, !micOnRef.current);
     });
@@ -541,16 +555,23 @@ export default function App() {
 
           await new Promise((resolve) => setTimeout(resolve, 100));
 
+          // Polite/impolite logic: compare socket IDs to prevent offer collision
+          const myId = socket?.id || "";
+          const isPolite = myId > id; // Larger ID is polite (waits for offer)
+
           if (pc.signalingState === "stable" && !makingOfferRef.current[id]) {
-            makingOfferRef.current[id] = true;
-            try {
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              if (socket) socket.emit("offer-to", id, offer);
-            } catch (offerError) {
-              console.warn("Failed to create/send offer:", offerError);
+            // Only impolite (smaller ID) makes the offer
+            if (!isPolite) {
+              makingOfferRef.current[id] = true;
+              try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                if (socket) socket.emit("offer-to", id, offer);
+              } catch (offerError) {
+                console.warn("Failed to create/send offer:", offerError);
+              }
+              makingOfferRef.current[id] = false;
             }
-            makingOfferRef.current[id] = false;
           }
         } catch (e) {
           console.warn("auto-offer failed", e);
@@ -685,7 +706,8 @@ export default function App() {
           audioContextRef,
           setRemoteLevels
         ),
-      (id, streamObj) => watchRemoteStream(id, streamObj, setRemoteStreams)
+      (id, streamObj) => watchRemoteStream(id, streamObj, setRemoteStreams),
+      iceServersRef.current
     );
   };
 
