@@ -291,7 +291,7 @@ function CallScreen({
                   <input
                     type="range"
                     min="0"
-                    max="2"
+                    max="1"
                     step="0.05"
                     value={memberVolume}
                     onChange={(e) => onMemberVolumeChange(id, parseFloat(e.target.value))}
@@ -583,7 +583,7 @@ function CallScreen({
                                 <input
                                   type="range"
                                   min="0"
-                                  max="2"
+                                  max="1"
                                   step="0.05"
                                   value={vol}
                                   onChange={(e) => onMemberVolumeChange(m.id, parseFloat(e.target.value))}
@@ -635,7 +635,7 @@ function CallScreen({
                     <input
                       type="range"
                       min="0"
-                      max="2"
+                      max="1"
                       step="0.05"
                       value={vol}
                       onChange={(e) => onMemberVolumeChange(m.id, parseFloat(e.target.value))}
