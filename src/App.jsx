@@ -256,18 +256,8 @@ export default function App() {
 
     socket.on("connect", async () => {
       console.log("✅ Socket connected");
-      const call = activeCallRef.current;
-      if (!call) {
-        console.log("⚠️ No active call in ref");
-        return;
-      }
-      const s = getSocket();
-      if (!s) {
-        console.log("⚠️ No socket in getSocket()");
-        return;
-      }
 
-      // Fetch ICE servers from backend
+      // Fetch ICE servers from backend (do this always, not just when activeCall exists)
       try {
         const base = import.meta.env.VITE_API_URL || "";
         console.log("📡 Fetching ICE servers from:", `${base}/api/ice-servers`);
@@ -282,6 +272,15 @@ export default function App() {
       } catch (e) {
         console.warn("❌ Failed to fetch ICE servers:", e);
       }
+
+      // Now handle join if there's an active call
+      const call = activeCallRef.current;
+      if (!call) {
+        console.log("⚠️ No active call in ref yet, will join when user clicks");
+        return;
+      }
+      const s = getSocket();
+      if (!s) return;
 
       s.emit("join", call.roomId, call.username);
       s.emit("set-muted", call.roomId, !micOnRef.current);
