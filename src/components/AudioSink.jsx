@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 
-function AudioSink({ stream, muted }) {
+function AudioSink({ stream, muted, volume = 1 }) {
   const ref = useRef();
   useEffect(() => {
     if (ref.current) {
@@ -15,6 +15,13 @@ function AudioSink({ stream, muted }) {
       tryPlay();
     }
   }, [stream]);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.volume = Math.max(0, Math.min(1, volume));
+    }
+  }, [volume]);
+
   return (
     <audio ref={ref} autoPlay playsInline muted={muted} className="hidden" />
   );

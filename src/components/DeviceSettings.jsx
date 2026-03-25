@@ -17,6 +17,8 @@ function DeviceSettings({
   onAudioOutputDeviceSelect,
   hideVideoSection = false,
   className = "",
+  noiseSuppression = true,
+  onNoiseSuppressionChange,
 }) {
   useEffect(() => {
     const handleEscape = (e) => {
@@ -71,6 +73,17 @@ function DeviceSettings({
               devices={audioDevices}
               className="w-full"
             />
+            {onNoiseSuppressionChange && (
+              <button
+                onClick={() => onNoiseSuppressionChange(!noiseSuppression)}
+                className="mt-2 flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-neutral-700 hover:bg-neutral-800 transition-colors text-sm text-neutral-300"
+              >
+                <div className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 ${noiseSuppression ? "bg-blue-600" : "bg-neutral-600"}`}>
+                  <div className={`w-3 h-3 bg-white rounded-full mt-0.5 transition-transform ${noiseSuppression ? "translate-x-4" : "translate-x-0.5"}`} />
+                </div>
+                Шумоизоляция
+              </button>
+            )}
           </div>
 
           {!hideVideoSection && (

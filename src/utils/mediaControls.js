@@ -15,7 +15,8 @@ export const createMicToggler = (
   renegotiateWith,
   roomId,
   socket,
-  onError
+  onError,
+  noiseSuppression = true
 ) => {
   return async () => {
     if (onError) onError(null);
@@ -24,7 +25,11 @@ export const createMicToggler = (
         let micTrack = localAudioTrackRef.current;
         if (!micTrack) {
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: {
+              noiseSuppression,
+              echoCancellation: true,
+              autoGainControl: true,
+            },
           });
           micTrack = micStream.getAudioTracks()[0];
           localAudioTrackRef.current = micTrack;
@@ -35,6 +40,13 @@ export const createMicToggler = (
           setStream(newStream);
         } else {
           micTrack.enabled = true;
+          try {
+            await micTrack.applyConstraints({
+              noiseSuppression,
+              echoCancellation: true,
+              autoGainControl: true,
+            });
+          } catch (e) {}
           if (stream && !stream.getAudioTracks().includes(micTrack)) {
             try {
               stream.addTrack(micTrack);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import VideoTile from "../components/VideoTile";
 import AudioSink from "../components/AudioSink";
 import Button from "../components/Button";
@@ -120,6 +120,14 @@ function CallScreen({
   onVideoDeviceSelect,
   onOutputDeviceSelect,
   onInitializeDevices,
+
+  // noise suppression
+  noiseSuppression,
+  onNoiseSuppressionChange,
+
+  // per-member volume
+  memberVolumes = {},
+  onMemberVolumeChange,
 }) {
   const socket = getSocket();
 
@@ -194,10 +202,12 @@ function CallScreen({
             : id?.substring(0, 4);
           const muted = id === socket?.id ? !micOn : memberObj?.muted ?? false;
 
+          const memberVolume = isLocal ? 1 : (memberVolumes[id] ?? 1);
+
           return (
             <div
               key={key}
-              className="relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20"
+              className="relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20 group"
             >
               {(() => {
                 const hasActiveVideo =
@@ -216,6 +226,9 @@ function CallScreen({
                     isLocal={isLocal}
                     isFrontCamera={isLocal ? isFrontCamera : true}
                   />
+                  {!isLocal && streamObj && streamObj.getAudioTracks().length > 0 && (
+                    <AudioSink stream={streamObj} muted={false} volume={memberVolume} />
+                  )}
                   {handSignals.some((h) => h.id === id) && (
                     <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
                       <span className="hand-wave">
@@ -227,7 +240,7 @@ function CallScreen({
               ) : (
                 <>
                   {streamObj && streamObj.getAudioTracks().length > 0 && (
-                    <AudioSink stream={streamObj} muted={isLocal} />
+                    <AudioSink stream={streamObj} muted={isLocal} volume={memberVolume} />
                   )}
                   <div className="text-neutral-400 flex items-center justify-center w-full">
                     <SpeakingIndicator
@@ -274,6 +287,23 @@ function CallScreen({
                 >
                   <RotateCcw size={12} />
                 </Button>
+              )}
+              {!isLocal && onMemberVolumeChange && (
+                <div className="absolute left-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-neutral-900/80 rounded-lg px-2 py-1">
+                  <span className="text-[10px] text-neutral-400">🔈</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.05"
+                    value={memberVolume}
+                    onChange={(e) => onMemberVolumeChange(id, parseFloat(e.target.value))}
+                    className="w-16 h-1 accent-blue-500 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-neutral-400 w-6">
+                    {Math.round(memberVolume * 100)}%
+                  </span>
+                </div>
               )}
             </div>
           );
@@ -767,6 +797,8 @@ function CallScreen({
           onVideoDeviceSelect={onVideoDeviceSelect}
           onOutputDeviceSelect={onOutputDeviceSelect}
           hideVideoSection={!camOn}
+          noiseSuppression={noiseSuppression}
+          onNoiseSuppressionChange={onNoiseSuppressionChange}
         />
       )}
     </div>

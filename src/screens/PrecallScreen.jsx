@@ -2,7 +2,7 @@ import Button from "../components/Button";
 import Input from "../components/Input";
 import MicActivityDot from "../components/MicActivityDot";
 import DualButton from "../components/DualButton";
-import { Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, Loader2 } from "lucide-react";
 
 function PrecallScreen({
   micOn,
@@ -13,6 +13,7 @@ function PrecallScreen({
   localVideo,
   stream,
   startCall,
+  socketConnected,
   roomId,
   tempName,
   setTempName,
@@ -25,6 +26,8 @@ function PrecallScreen({
   onVideoDeviceSelect,
   onInitializeDevices,
   mediaError,
+  noiseSuppression,
+  onNoiseSuppressionChange,
 }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh bg-black px-4">
@@ -63,6 +66,17 @@ function PrecallScreen({
             className="flex-1"
             onInitializeDevices={onInitializeDevices}
           />
+          {onNoiseSuppressionChange && (
+            <button
+              onClick={() => onNoiseSuppressionChange(!noiseSuppression)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-700 hover:bg-neutral-800 transition-colors text-sm text-neutral-300"
+            >
+              <div className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 ${noiseSuppression ? "bg-blue-600" : "bg-neutral-600"}`}>
+                <div className={`w-3 h-3 bg-white rounded-full mt-0.5 transition-transform ${noiseSuppression ? "translate-x-4" : "translate-x-0.5"}`} />
+              </div>
+              Шумоизоляция
+            </button>
+          )}
 
           <DualButton
             mainButton={
@@ -110,8 +124,19 @@ function PrecallScreen({
           )}
         </div>
 
-        <Button className="w-full" onClick={startCall}>
-          Войти в звонок
+        <Button
+          className="w-full"
+          onClick={startCall}
+          disabled={!socketConnected}
+        >
+          {!socketConnected ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              Подключение...
+            </>
+          ) : (
+            "Войти в звонок"
+          )}
         </Button>
 
         <div className="text-xs text-neutral-600 mt-3 break-all">

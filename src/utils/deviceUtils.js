@@ -1,7 +1,8 @@
 export const getUserDevices = async () => {
   try {
+    // Request only audio permission to enumerate devices — avoids turning on camera
     await navigator.mediaDevices
-      .getUserMedia({ audio: true, video: true })
+      .getUserMedia({ audio: true })
       .then((stream) => {
         stream.getTracks().forEach((track) => track.stop());
       })

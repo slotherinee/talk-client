@@ -96,6 +96,7 @@ export const watchRemoteStream = (id, streamObj, setRemoteStreams) => {
 export const renegotiateWith = async (peerId, pcs, getSocket) => {
   const pc = pcs.current[peerId];
   if (!pc) return;
+  if (pc.signalingState !== "stable") return;
   try {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);

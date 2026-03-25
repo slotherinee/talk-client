@@ -109,6 +109,10 @@ export default function App() {
     300
   );
 
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [noiseSuppression, setNoiseSuppression] = useState(true);
+  const [memberVolumes, setMemberVolumes] = useState({});
+
   // Device management state
   const [audioDevices, setAudioDevices] = useState([]);
   const [videoDevices, setVideoDevices] = useState([]);
@@ -133,6 +137,35 @@ export default function App() {
 
   useEffect(() => { micOnRef.current = micOn; }, [micOn]);
   useEffect(() => { camOnRef.current = camOn; }, [camOn]);
+
+  // Load saved username from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("talk_username");
+      if (saved) setTempName(saved);
+    } catch (e) {}
+  }, []);
+
+  // Save username to localStorage when it changes
+  useEffect(() => {
+    if (!tempName) return;
+    try {
+      localStorage.setItem("talk_username", tempName);
+    } catch (e) {}
+  }, [tempName]);
+
+  // Apply noise suppression to active mic track when toggle changes
+  useEffect(() => {
+    const track = localAudioTrackRef.current;
+    if (!track || track.readyState !== "live") return;
+    try {
+      track.applyConstraints({
+        noiseSuppression,
+        echoCancellation: true,
+        autoGainControl: true,
+      });
+    } catch (e) {}
+  }, [noiseSuppression]);
 
   useEffect(() => {
     if (screen !== "call") return;
@@ -255,30 +288,23 @@ export default function App() {
     socket._appListenersAdded = true;
 
     socket.on("connect", async () => {
-      console.log("✅ Socket connected");
+      setSocketConnected(true);
 
-      // Fetch ICE servers from backend (do this always, not just when activeCall exists)
+      // Fetch ICE servers from backend
       try {
         const base = import.meta.env.VITE_API_URL || "";
-        console.log("📡 Fetching ICE servers from:", `${base}/api/ice-servers`);
         const response = await fetch(`${base}/api/ice-servers`);
-        console.log("📡 ICE servers response status:", response.status);
         const data = await response.json();
-        console.log("📡 ICE servers data:", data);
         if (data.iceServers && Array.isArray(data.iceServers)) {
           iceServersRef.current = data.iceServers;
-          console.log("✅ ICE servers loaded:", data.iceServers);
         }
       } catch (e) {
         console.warn("❌ Failed to fetch ICE servers:", e);
       }
 
-      // Now handle join if there's an active call
+      // Now handle join if there's an active call (reconnect case)
       const call = activeCallRef.current;
-      if (!call) {
-        console.log("⚠️ No active call in ref yet, will join when user clicks");
-        return;
-      }
+      if (!call) return;
       const s = getSocket();
       if (!s) return;
 
@@ -293,6 +319,10 @@ export default function App() {
       setMembers(normalized);
     };
     socket.on("members", handleMembers);
+
+    socket.on("disconnect", () => {
+      setSocketConnected(false);
+    });
 
     socket.on(
       "offer",
@@ -780,7 +810,8 @@ export default function App() {
     renegotiateWithPeer,
     roomId,
     getSocket,
-    setMediaError
+    setMediaError,
+    noiseSuppression
   );
 
   const toggleCam = async () => {
@@ -1261,6 +1292,7 @@ export default function App() {
         localVideo={localVideo}
         stream={stream}
         startCall={startCall}
+        socketConnected={socketConnected}
         roomId={roomId}
         tempName={tempName}
         setTempName={setTempName}
@@ -1272,6 +1304,8 @@ export default function App() {
         onVideoDeviceSelect={handleVideoDeviceSelect}
         onInitializeDevices={initializeDevices}
         mediaError={mediaError}
+        noiseSuppression={noiseSuppression}
+        onNoiseSuppressionChange={setNoiseSuppression}
       />
     );
   }
@@ -1351,6 +1385,12 @@ export default function App() {
         onVideoDeviceSelect={handleVideoDeviceSelect}
         onOutputDeviceSelect={handleOutputDeviceSelect}
         onInitializeDevices={initializeDevices}
+        noiseSuppression={noiseSuppression}
+        onNoiseSuppressionChange={setNoiseSuppression}
+        memberVolumes={memberVolumes}
+        onMemberVolumeChange={(id, vol) =>
+          setMemberVolumes((prev) => ({ ...prev, [id]: vol }))
+        }
       />
     );
   }
