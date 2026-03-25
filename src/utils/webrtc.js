@@ -1,4 +1,4 @@
-export const createPeerConnectionFor = async (
+export const createPeerConnectionFor = (
   id,
   getSocket,
   politeRef,
