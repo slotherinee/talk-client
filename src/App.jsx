@@ -912,6 +912,7 @@ export default function App() {
   };
 
   const handleAudioDeviceSelect = async (deviceId) => {
+    if (deviceId === currentAudioDevice) return;
     try {
       await switchToDevice(deviceId, "audio", {
         stream,
