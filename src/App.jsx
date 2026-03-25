@@ -255,21 +255,32 @@ export default function App() {
     socket._appListenersAdded = true;
 
     socket.on("connect", async () => {
+      console.log("✅ Socket connected");
       const call = activeCallRef.current;
-      if (!call) return;
+      if (!call) {
+        console.log("⚠️ No active call in ref");
+        return;
+      }
       const s = getSocket();
-      if (!s) return;
+      if (!s) {
+        console.log("⚠️ No socket in getSocket()");
+        return;
+      }
 
       // Fetch ICE servers from backend
       try {
         const base = import.meta.env.VITE_API_URL || "";
+        console.log("📡 Fetching ICE servers from:", `${base}/api/ice-servers`);
         const response = await fetch(`${base}/api/ice-servers`);
+        console.log("📡 ICE servers response status:", response.status);
         const data = await response.json();
+        console.log("📡 ICE servers data:", data);
         if (data.iceServers && Array.isArray(data.iceServers)) {
           iceServersRef.current = data.iceServers;
+          console.log("✅ ICE servers loaded:", data.iceServers);
         }
       } catch (e) {
-        console.warn("Failed to fetch ICE servers:", e);
+        console.warn("❌ Failed to fetch ICE servers:", e);
       }
 
       s.emit("join", call.roomId, call.username);
