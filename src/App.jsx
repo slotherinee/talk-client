@@ -922,6 +922,30 @@ export default function App() {
         renegotiateWithPeer: renegotiateWithPeer,
       });
       setCurrentAudioDevice(deviceId);
+
+      // Reconnect AudioContext graph to the new track
+      if (micOn && localAudioTrackRef.current) {
+        try {
+          if (sourceRef.current) sourceRef.current.disconnect();
+        } catch (e) {}
+        try {
+          if (gainNodeRef.current) gainNodeRef.current.disconnect();
+        } catch (e) {}
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ac = audioContextRef.current;
+        const src = ac.createMediaStreamSource(new MediaStream([localAudioTrackRef.current]));
+        const gain = ac.createGain();
+        gain.gain.value = volume / 100;
+        const analyser = ac.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(gain);
+        gain.connect(analyser);
+        sourceRef.current = src;
+        gainNodeRef.current = gain;
+        analyserRef.current = analyser;
+      }
     } catch (error) {
       console.error("Failed to switch audio device:", error);
     }

@@ -209,15 +209,12 @@ function CallScreen({
               key={key}
               className="relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20 group"
             >
-              {(() => {
-                const hasActiveVideo =
-                  streamObj &&
+              {(isLocal
+                ? camOn
+                : streamObj &&
                   streamObj.getVideoTracks &&
-                  streamObj
-                    .getVideoTracks()
-                    .some((t) => t.readyState === "live" && t.enabled);
-                return hasActiveVideo;
-              })() ? (
+                  streamObj.getVideoTracks().some((t) => t.readyState === "live" && t.enabled)
+              ) ? (
                 <div className="relative size-full">
                   <VideoTile
                     stream={streamObj}
@@ -563,22 +560,41 @@ function CallScreen({
                       <Users size={14} /> Участники ({members.length})
                     </div>
                     <div className="flex flex-col gap-1 text-[11px]">
-                      {members.map((m) => (
-                        <div
-                          key={m.id}
-                          className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-neutral-800/50"
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <User size={14} className="opacity-70" />
-                            <span className="truncate" title={m.name}>
-                              {m.name || m.id?.substring(0, 10)}
-                            </span>
+                      {members.map((m) => {
+                        const isMe = m.id === socket?.id;
+                        const vol = isMe ? 1 : (memberVolumes[m.id] ?? 1);
+                        return (
+                          <div
+                            key={m.id}
+                            className="flex flex-col gap-1 px-2 py-1 rounded bg-neutral-800/50"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 truncate">
+                                <User size={14} className="opacity-70" />
+                                <span className="truncate" title={m.name}>
+                                  {m.name || m.id?.substring(0, 10)}
+                                </span>
+                              </div>
+                              {m.muted && <MicOff size={14} className="text-red-400" />}
+                            </div>
+                            {!isMe && onMemberVolumeChange && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-neutral-500">🔈</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="2"
+                                  step="0.05"
+                                  value={vol}
+                                  onChange={(e) => onMemberVolumeChange(m.id, parseFloat(e.target.value))}
+                                  className="flex-1 h-1 accent-blue-500 cursor-pointer"
+                                />
+                                <span className="text-neutral-500 w-7 text-right">{Math.round(vol * 100)}%</span>
+                              </div>
+                            )}
                           </div>
-                          {m.muted && (
-                            <MicOff size={14} className="text-red-400" />
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -589,24 +605,48 @@ function CallScreen({
       )}
 
       {!isMobile && !isTablet && participantsOpen && (
-        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-64 max-h-64 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-lg p-3 flex flex-col gap-2 text-sm">
+        <div className="fixed inset-0 z-40" onClick={() => setParticipantsOpen(false)} />
+      )}
+      {!isMobile && !isTablet && participantsOpen && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-64 max-h-64 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-lg p-3 flex flex-col gap-2 text-sm z-50">
           <div className="font-semibold text-neutral-200 mb-1 flex items-center gap-2">
             <Users size={14} /> Участники ({members.length})
           </div>
-          {members.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-neutral-800/50"
-            >
-              <div className="flex items-center gap-2 truncate">
-                <User size={14} className="opacity-70" />
-                <span className="truncate" title={m.name}>
-                  {m.name || m.id?.substring(0, 10)}
-                </span>
+          {members.map((m) => {
+            const isMe = m.id === socket?.id;
+            const vol = isMe ? 1 : (memberVolumes[m.id] ?? 1);
+            return (
+              <div
+                key={m.id}
+                className="flex flex-col gap-1 px-2 py-1 rounded bg-neutral-800/50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 truncate">
+                    <User size={14} className="opacity-70" />
+                    <span className="truncate" title={m.name}>
+                      {m.name || m.id?.substring(0, 10)}
+                    </span>
+                  </div>
+                  {m.muted && <MicOff size={14} className="text-red-400" />}
+                </div>
+                {!isMe && onMemberVolumeChange && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-neutral-500 text-[10px]">🔈</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.05"
+                      value={vol}
+                      onChange={(e) => onMemberVolumeChange(m.id, parseFloat(e.target.value))}
+                      className="flex-1 h-1 accent-blue-500 cursor-pointer"
+                    />
+                    <span className="text-neutral-500 text-[10px] w-7 text-right">{Math.round(vol * 100)}%</span>
+                  </div>
+                )}
               </div>
-              {m.muted && <MicOff size={14} className="text-red-400" />}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
