@@ -1,12 +1,26 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Толк</title>
+    <title>толк</title>
+    <link id="favicon" rel="shortcut icon" href="/light.ico" type="image/x-icon" />
   </head>
   <body class="bg-gray-900 text-white">
     <div id="root"></div>
+    <script>
+      const favicon = document.getElementById('favicon')
+
+      function updateFavicon(e) {
+        const isDark = e.matches
+        favicon.href = isDark ? '/dark.ico' : '/light.ico'
+      }
+
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      updateFavicon(media)
+
+      media.addEventListener('change', updateFavicon)
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
