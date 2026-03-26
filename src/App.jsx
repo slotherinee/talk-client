@@ -371,16 +371,29 @@ export default function App() {
 
     socket.on("candidate", async (fromId, candidate) => {
       const pc = pcs.current[fromId];
+
+      // Buffer candidates if PC not ready or no remote description yet
       if (!pc || !pc.remoteDescription) {
         if (!iceCandidateBufferRef.current[fromId]) {
           iceCandidateBufferRef.current[fromId] = [];
         }
-        iceCandidateBufferRef.current[fromId].push(candidate);
+        // Prevent buffer from growing too large (memory leak prevention)
+        if (iceCandidateBufferRef.current[fromId].length < 100) {
+          iceCandidateBufferRef.current[fromId].push(candidate);
+        } else {
+          console.warn("🧊 ICE candidate buffer too large, dropping candidates");
+        }
         return;
       }
+
+      // Add candidate if PC is ready
+      if (!candidate) return;
       try {
         await pc.addIceCandidate(candidate);
-      } catch (e) {}
+      } catch (e) {
+        // Ignore errors - invalid candidates are normal and can be safely ignored
+        console.debug("ICE candidate add error (normal):", e.message?.slice(0, 50));
+      }
     });
     socket.on("room-join-ok", (info) => {
       if (info) {
@@ -577,12 +590,11 @@ export default function App() {
     if (screen === "precall" && !localAudioTrackRef.current) {
       (async () => {
         try {
+          const { buildAudioConstraints } = await import("./utils/deviceUtils");
+          const audioConstraints = buildAudioConstraints(noiseSuppression);
+
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              noiseSuppression: noiseSuppression,
-              echoCancellation: true,
-              autoGainControl: true,
-            },
+            audio: audioConstraints,
           });
           const audioTrack = micStream.getAudioTracks()[0];
           if (audioTrack) {
@@ -809,13 +821,31 @@ export default function App() {
 
   const drainIceCandidates = async (peerId) => {
     const pc = pcs.current[peerId];
-    if (!pc) return;
+    if (!pc) {
+      console.warn("❌ No PC found for draining candidates:", peerId);
+      return;
+    }
+
+    // Check if remote description is set
+    if (!pc.remoteDescription) {
+      console.warn("⚠️ Remote description not set yet for", peerId);
+      return;
+    }
+
     const buffer = iceCandidateBufferRef.current[peerId] || [];
+    if (buffer.length === 0) return;
+
+    console.log(`🧊 Draining ${buffer.length} ICE candidates for ${peerId}`);
     iceCandidateBufferRef.current[peerId] = [];
+
     for (const candidate of buffer) {
+      if (!candidate) continue;
       try {
         await pc.addIceCandidate(candidate);
-      } catch (e) {}
+      } catch (e) {
+        // Ignore errors for invalid candidates (this is normal)
+        console.debug("ICE candidate error (this is normal):", e.message);
+      }
     }
   };
 
@@ -1217,23 +1247,99 @@ export default function App() {
 
   const handleLeave = () => {
     activeCallRef.current = null;
+
+    // 🧹 Clean up silent audio
     if (silentAudioRef.current) {
-      silentAudioRef.current.audio.pause();
-      URL.revokeObjectURL(silentAudioRef.current.url);
+      try {
+        silentAudioRef.current.audio.pause();
+        URL.revokeObjectURL(silentAudioRef.current.url);
+      } catch (e) {}
       silentAudioRef.current = null;
     }
-    try {
-      const socket = getSocket();
-      if (socket) socket.emit("leave", roomId);
-    } catch (e) {}
+
+    // 🧹 Clean up audio analyzers (prevent memory leak)
+    Object.values(remoteAnalyzersRef.current).forEach(({ source, analyser, raf }) => {
+      try {
+        if (raf) cancelAnimationFrame(raf);
+        if (source) source.disconnect();
+        if (analyser) analyser.disconnect();
+      } catch (e) {}
+    });
+    remoteAnalyzersRef.current = {};
+
+    // 🧹 Clean up local audio analyzer
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (sourceRef.current) {
+      try {
+        sourceRef.current.disconnect();
+      } catch (e) {}
+      sourceRef.current = null;
+    }
+    if (gainNodeRef.current) {
+      try {
+        gainNodeRef.current.disconnect();
+      } catch (e) {}
+      gainNodeRef.current = null;
+    }
+    if (analyserRef.current) {
+      try {
+        analyserRef.current.disconnect();
+      } catch (e) {}
+      analyserRef.current = null;
+    }
+
+    // 🧹 Close audio context
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      try {
+        audioContextRef.current.close();
+      } catch (e) {}
+      audioContextRef.current = null;
+    }
+
+    // 🧹 Stop all local tracks
+    if (localAudioTrackRef.current) {
+      try {
+        localAudioTrackRef.current.stop();
+      } catch (e) {}
+      localAudioTrackRef.current = null;
+    }
+    if (localVideoTrackRef.current) {
+      try {
+        localVideoTrackRef.current.stop();
+      } catch (e) {}
+      localVideoTrackRef.current = null;
+    }
+    if (screenTrackRef.current) {
+      try {
+        screenTrackRef.current.stop();
+      } catch (e) {}
+      screenTrackRef.current = null;
+    }
+
+    // 🧹 Close all peer connections
     Object.values(pcs.current).forEach((pc) => {
       try {
         pc.close();
       } catch (e) {}
     });
     pcs.current = {};
+    makingOfferRef.current = {};
+    ignoreOfferRef.current = {};
+    politeRef.current = {};
+
+    // 🧹 Clear streams
     setRemoteStreams({});
+    setStream(null);
     setMembers([]);
+    setMemberVolumes({});
+
+    try {
+      const socket = getSocket();
+      if (socket) socket.emit("leave", roomId);
+    } catch (e) {}
 
     // Disconnect socket when leaving
     disconnectSocket();

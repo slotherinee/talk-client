@@ -1,3 +1,42 @@
+// 🎤 Check if browser supports noiseSuppression constraint
+const supportsNoiseSuppressionCache = {};
+
+export const supportsNoiseSuppression = async () => {
+  if (supportsNoiseSuppressionCache.checked) {
+    return supportsNoiseSuppressionCache.result;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { noiseSuppression: true },
+    });
+    stream.getTracks().forEach((track) => track.stop());
+    supportsNoiseSuppressionCache.checked = true;
+    supportsNoiseSuppressionCache.result = true;
+    return true;
+  } catch (e) {
+    supportsNoiseSuppressionCache.checked = true;
+    supportsNoiseSuppressionCache.result = false;
+    return false;
+  }
+};
+
+// 🎤 Build audio constraints safely
+export const buildAudioConstraints = (noiseSuppression = true) => {
+  const constraints = {
+    echoCancellation: true,
+    autoGainControl: true,
+  };
+
+  // Only add noiseSuppression if browser might support it
+  // (we'll let browser decide if it can, error is handled by caller)
+  if (noiseSuppression) {
+    constraints.noiseSuppression = true;
+  }
+
+  return constraints;
+};
+
 export const getUserDevices = async () => {
   try {
     // Request only audio permission to enumerate devices — avoids turning on camera
@@ -61,6 +100,21 @@ export const switchToDevice = async (deviceId, kind, context) => {
       localVideo,
     } = context;
 
+    // 🔍 Check if we're already using this device (avoid unnecessary switch)
+    let currentDeviceId = null;
+    if (kind === "audio" && localAudioTrackRef?.current) {
+      const settings = localAudioTrackRef.current.getSettings?.();
+      currentDeviceId = settings?.deviceId;
+    } else if (kind === "video" && localVideoTrackRef?.current) {
+      const settings = localVideoTrackRef.current.getSettings?.();
+      currentDeviceId = settings?.deviceId;
+    }
+
+    if (currentDeviceId === deviceId) {
+      console.log(`ℹ️ Already using ${kind} device ${deviceId}, skipping switch`);
+      return stream; // Don't do anything
+    }
+
     const constraints = {};
 
     if (kind === "audio") {
@@ -78,40 +132,102 @@ export const switchToDevice = async (deviceId, kind, context) => {
     const newStream = await navigator.mediaDevices.getUserMedia(constraints);
 
     if (kind === "audio" && localAudioTrackRef) {
-      if (stream) {
-        stream.getAudioTracks().forEach((track) => track.stop());
-      }
-
       const newAudioTrack = newStream.getAudioTracks()[0];
+      const oldAudioTrack = localAudioTrackRef.current;
+
       if (newAudioTrack) {
         localAudioTrackRef.current = newAudioTrack;
+
+        // Replace track in all peer connections
+        if (pcs && pcs.current) {
+          Object.values(pcs.current).forEach((pc) => {
+            try {
+              const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+              if (sender) {
+                sender.replaceTrack(newAudioTrack).catch((err) => {
+                  console.warn("Failed to replace audio track in PC:", err);
+                });
+              }
+            } catch (err) {
+              console.warn("Error updating audio track in PC:", err);
+            }
+          });
+        }
+
+        // Stop old track after replacement
+        if (oldAudioTrack) {
+          try {
+            oldAudioTrack.stop();
+          } catch (e) {}
+        }
+
+        // Update stream
+        if (stream) {
+          const newStreamTracks = stream
+            .getTracks()
+            .filter((t) => t.kind !== "audio");
+          newStreamTracks.push(newAudioTrack);
+          const updatedStream = new MediaStream(newStreamTracks);
+          if (setStream) setStream(updatedStream);
+        }
       }
     } else if (kind === "video" && localVideoTrackRef) {
-      if (stream) {
-        stream.getVideoTracks().forEach((track) => track.stop());
-      }
-
       const newVideoTrack = newStream.getVideoTracks()[0];
+      const oldVideoTrack = localVideoTrackRef.current;
+
       if (newVideoTrack) {
         localVideoTrackRef.current = newVideoTrack;
-        if (localVideo) {
-          localVideo.srcObject = newStream;
+
+        // Replace track in all peer connections
+        if (pcs && pcs.current) {
+          Object.values(pcs.current).forEach((pc) => {
+            try {
+              const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+              if (sender) {
+                sender.replaceTrack(newVideoTrack).catch((err) => {
+                  console.warn("Failed to replace video track in PC:", err);
+                });
+              }
+            } catch (err) {
+              console.warn("Error updating video track in PC:", err);
+            }
+          });
+        }
+
+        // Stop old track after replacement
+        if (oldVideoTrack) {
+          try {
+            oldVideoTrack.stop();
+          } catch (e) {}
+        }
+
+        // Update stream and video element
+        if (stream) {
+          const newStreamTracks = stream
+            .getTracks()
+            .filter((t) => t.kind !== "video");
+          newStreamTracks.push(newVideoTrack);
+          const updatedStream = new MediaStream(newStreamTracks);
+          if (setStream) setStream(updatedStream);
+          if (localVideo) {
+            localVideo.srcObject = updatedStream;
+          }
         }
       }
     }
-    if (setStream) {
-      setStream(newStream);
-    }
 
-    if (pcs && renegotiateWithPeer) {
-      Object.keys(pcs).forEach((peerId) => {
-        const pc = pcs[peerId];
-        if (pc && pc.connectionState === "connected") {
-          try {
-            renegotiateWithPeer(peerId);
-          } catch (err) {
-            console.warn("Failed to renegotiate with peer:", peerId, err);
-          }
+    // Renegotiate with all peers
+    if (pcs && pcs.current && renegotiateWithPeer) {
+      Object.keys(pcs.current).forEach((peerId) => {
+        const pc = pcs.current[peerId];
+        if (pc && (pc.connectionState === "connected" || pc.signalingState === "stable")) {
+          setTimeout(() => {
+            try {
+              renegotiateWithPeer(peerId);
+            } catch (err) {
+              console.warn("Failed to renegotiate with peer:", peerId, err);
+            }
+          }, 100);
         }
       });
     }
@@ -119,7 +235,21 @@ export const switchToDevice = async (deviceId, kind, context) => {
     return newStream;
   } catch (error) {
     console.warn(`Failed to switch to ${kind} device:`, error);
-    throw error;
+
+    // Provide specific error information
+    let errorMsg = `Ошибка при переключении ${kind === "audio" ? "микрофона" : "камеры"}`;
+
+    if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+      errorMsg = `Вы запретили доступ к ${kind === "audio" ? "микрофону" : "камере"}`;
+    } else if (error.name === "NotFoundError") {
+      errorMsg = `${kind === "audio" ? "Микрофон" : "Камера"} не найдена`;
+    } else if (error.name === "NotReadableError") {
+      errorMsg = `${kind === "audio" ? "Микрофон" : "Камера"} занята другим приложением`;
+    }
+
+    const err = new Error(errorMsg);
+    err.originalError = error;
+    throw err;
   }
 };
 

@@ -24,12 +24,12 @@ export const createMicToggler = (
       try {
         let micTrack = localAudioTrackRef.current;
         if (!micTrack) {
+          // Import buildAudioConstraints at top of file
+          const { buildAudioConstraints } = require("./deviceUtils");
+          const audioConstraints = buildAudioConstraints(noiseSuppression);
+
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              noiseSuppression,
-              echoCancellation: true,
-              autoGainControl: true,
-            },
+            audio: audioConstraints,
           });
           micTrack = micStream.getAudioTracks()[0];
           micTrack.enabled = true;
@@ -52,12 +52,12 @@ export const createMicToggler = (
         } else {
           micTrack.enabled = true;
           try {
-            await micTrack.applyConstraints({
-              noiseSuppression,
-              echoCancellation: true,
-              autoGainControl: true,
-            });
-          } catch (e) {}
+            const { buildAudioConstraints } = require("./deviceUtils");
+            const audioConstraints = buildAudioConstraints(noiseSuppression);
+            await micTrack.applyConstraints(audioConstraints);
+          } catch (e) {
+            console.warn("Failed to apply audio constraints:", e);
+          }
           if (stream && !stream.getAudioTracks().includes(micTrack)) {
             try {
               stream.addTrack(micTrack);
@@ -128,7 +128,22 @@ export const createMicToggler = (
         }, 200);
       } catch (e) {
         console.error("Mic access error", e);
-        if (onError) onError("Нет доступа к микрофону. Проверьте разрешения в браузере.");
+        let errorMsg = "Нет доступа к микрофону. Проверьте разрешения в браузере.";
+
+        // Provide specific error messages based on error type
+        if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+          errorMsg = "Вы запретили доступ к микрофону. Проверьте разрешения браузера.";
+        } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+          errorMsg = "Микрофон не найден. Подключите микрофон и попробуйте снова.";
+        } else if (e.name === "NotReadableError" || e.name === "TrackStartError") {
+          errorMsg = "Микрофон занят другим приложением. Закройте его и попробуйте снова.";
+        } else if (e.name === "SecurityError") {
+          errorMsg = "Ошибка безопасности. Используйте HTTPS и проверьте разрешения.";
+        } else if (e.name === "TypeError") {
+          errorMsg = "Ошибка конфигурации. Обновите страницу и попробуйте снова.";
+        }
+
+        if (onError) onError(errorMsg);
       }
     } else {
       // Отключаем микрофон (но не удаляем трек, чтобы новые peers могли его услышать)
@@ -236,7 +251,22 @@ export const createCamToggler = (
         }, 200);
       } catch (e) {
         console.error("Camera access error", e);
-        if (onError) onError("Нет доступа к камере. Проверьте разрешения в браузере.");
+        let errorMsg = "Нет доступа к камере. Проверьте разрешения в браузере.";
+
+        // Provide specific error messages based on error type
+        if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+          errorMsg = "Вы запретили доступ к камере. Проверьте разрешения браузера.";
+        } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+          errorMsg = "Камера не найдена. Подключите камеру и попробуйте снова.";
+        } else if (e.name === "NotReadableError" || e.name === "TrackStartError") {
+          errorMsg = "Камера занята другим приложением. Закройте его и попробуйте снова.";
+        } else if (e.name === "SecurityError") {
+          errorMsg = "Ошибка безопасности. Используйте HTTPS и проверьте разрешения.";
+        } else if (e.name === "TypeError") {
+          errorMsg = "Ошибка конфигурации. Обновите страницу и попробуйте снова.";
+        }
+
+        if (onError) onError(errorMsg);
       }
     } else {
       if (stream) {
