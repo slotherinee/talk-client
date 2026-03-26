@@ -1,3 +1,5 @@
+import { buildAudioConstraints } from "./deviceUtils";
+
 export const createMicToggler = (
   micOn,
   setMicOn,
@@ -24,8 +26,6 @@ export const createMicToggler = (
       try {
         let micTrack = localAudioTrackRef.current;
         if (!micTrack) {
-          // Import buildAudioConstraints at top of file
-          const { buildAudioConstraints } = require("./deviceUtils");
           const audioConstraints = buildAudioConstraints(noiseSuppression);
 
           const micStream = await navigator.mediaDevices.getUserMedia({
@@ -52,7 +52,6 @@ export const createMicToggler = (
         } else {
           micTrack.enabled = true;
           try {
-            const { buildAudioConstraints } = require("./deviceUtils");
             const audioConstraints = buildAudioConstraints(noiseSuppression);
             await micTrack.applyConstraints(audioConstraints);
           } catch (e) {
