@@ -1139,6 +1139,25 @@ export default function App() {
     activeCallRef.current = { roomId, username: finalName };
     socket.emit("set-username", roomId, finalName);
 
+    // Ensure audio track exists before joining (even if mic is off)
+    // This allows remote peers to receive our audio track from the start
+    if (!localAudioTrackRef.current) {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, autoGainControl: true, noiseSuppression: noiseSuppression },
+        });
+        const audioTrack = micStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.enabled = micOn; // off if mic was off
+          localAudioTrackRef.current = audioTrack;
+          const newStream = stream ? new MediaStream([...stream.getTracks(), audioTrack]) : new MediaStream([audioTrack]);
+          setStream(newStream);
+        }
+      } catch (e) {
+        console.warn("Could not pre-create audio track:", e.name);
+      }
+    }
+
     socket.emit("join", roomId, finalName);
     const targetIds = members.map((m) => m.id).filter((id) => id !== socket.id);
     for (const memberId of targetIds) {
