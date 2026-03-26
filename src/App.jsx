@@ -349,12 +349,14 @@ export default function App() {
       if (!pc) return;
       try {
         const state = pc.signalingState;
+        console.log(`📥 Received answer from ${fromId}, state=${state}`);
         if (
           state === "have-local-offer" ||
           state === "have-local-pranswer" ||
           state === "have-remote-offer"
         ) {
           await pc.setRemoteDescription(description);
+          console.log(`✅ Remote description set for ${fromId}, buffer=${iceCandidateBufferRef.current[fromId]?.length || 0} candidates`);
           await drainIceCandidates(fromId);
         } else {
           console.warn("Received answer in unexpected signaling state", state);
@@ -374,7 +376,8 @@ export default function App() {
         }
         // Prevent buffer from growing too large (memory leak prevention)
         if (iceCandidateBufferRef.current[fromId].length < 100) {
-          iceCandidateBufferRef.current[fromId].push(candidate);
+          const bufLen = iceCandidateBufferRef.current[fromId].push(candidate);
+          console.log(`📦 Buffered candidate from ${fromId} (buffer size=${bufLen}, hasPC=${!!pc}, hasRemoteDesc=${pc?.remoteDescription ? 'yes' : 'no'})`);
         } else {
           console.warn("🧊 ICE candidate buffer too large, dropping candidates");
         }
@@ -384,6 +387,7 @@ export default function App() {
       // Add candidate if PC is ready
       if (!candidate) return;
       try {
+        console.log(`🔗 Adding candidate from ${fromId} directly (remoteDesc ready)`);
         await pc.addIceCandidate(candidate);
       } catch (e) {
         // Ignore errors - invalid candidates are normal and can be safely ignored
@@ -624,16 +628,20 @@ export default function App() {
           if (pc.signalingState === "stable" && !makingOfferRef.current[id]) {
             // Only impolite (smaller ID) makes the offer
             if (!isPolite) {
+              console.log(`📤 Creating offer for ${id} (impolite, state=${pc.signalingState})`);
               makingOfferRef.current[id] = true;
               try {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
+                console.log(`📤 Sent offer to ${id}, remoteDesc=${!!pc.remoteDescription}`);
                 if (socket) socket.emit("offer-to", id, offer);
               } catch (offerError) {
                 console.warn("Failed to create/send offer:", offerError);
               }
               makingOfferRef.current[id] = false;
             }
+          } else {
+            console.log(`⏭️ Skipping offer for ${id}: state=${pc.signalingState}, making=${makingOfferRef.current[id]}, polite=${isPolite}`);
           }
         } catch (e) {
           console.warn("auto-offer failed", e);
@@ -784,13 +792,17 @@ export default function App() {
       return;
     }
 
+    const buffer = iceCandidateBufferRef.current[peerId] || [];
+    const hasRemoteDesc = !!pc.remoteDescription;
+
+    console.log(`🧊 Drain check for ${peerId}: buffer=${buffer.length}, hasRemoteDesc=${hasRemoteDesc}, state=${pc.signalingState}`);
+
     // Check if remote description is set
     if (!pc.remoteDescription) {
-      console.warn("⚠️ Remote description not set yet for", peerId);
+      console.warn("⚠️ Remote description not set yet for", peerId, "- buffer will drain on answer");
       return;
     }
 
-    const buffer = iceCandidateBufferRef.current[peerId] || [];
     if (buffer.length === 0) return;
 
     console.log(`🧊 Draining ${buffer.length} ICE candidates for ${peerId}`);
@@ -818,6 +830,7 @@ export default function App() {
   };
 
   const handleOfferFromPeer = async (id, description) => {
+    console.log(`📨 Received offer from ${id}, processing...`);
     await handleOffer(
       id,
       description,
@@ -829,6 +842,7 @@ export default function App() {
       addLocalTracksToPC,
       getSocket
     );
+    console.log(`✅ Handled offer from ${id}, draining buffer...`);
     await drainIceCandidates(id);
   };
 
