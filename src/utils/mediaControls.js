@@ -32,12 +32,23 @@ export const createMicToggler = (
             },
           });
           micTrack = micStream.getAudioTracks()[0];
+          micTrack.enabled = true;
           localAudioTrackRef.current = micTrack;
           const newStream = stream ? stream : new MediaStream();
           try {
             newStream.addTrack(micTrack);
           } catch (e) {}
           setStream(newStream);
+          // Добавляем трек во все существующие PeerConnections
+          Object.entries(pcs.current).forEach(([peerId, pc]) => {
+            try {
+              const senders = pc.getSenders();
+              const audioSender = senders.find((s) => s.track && s.track.kind === "audio");
+              if (!audioSender) {
+                pc.addTrack(micTrack, new MediaStream([micTrack]));
+              }
+            } catch (e) {}
+          });
         } else {
           micTrack.enabled = true;
           try {
@@ -120,10 +131,12 @@ export const createMicToggler = (
         if (onError) onError("Нет доступа к микрофону. Проверьте разрешения в браузере.");
       }
     } else {
-      if (stream) {
-        if (localAudioTrackRef.current)
-          localAudioTrackRef.current.enabled = false;
+      // Отключаем микрофон (но не удаляем трек, чтобы новые peers могли его услышать)
+      if (localAudioTrackRef.current) {
+        localAudioTrackRef.current.enabled = false;
       }
+
+      // Отключаем audio track во всех существующих PC
       Object.values(pcs.current).forEach((pc) => {
         try {
           const senders = pc.getSenders();
@@ -137,6 +150,7 @@ export const createMicToggler = (
           }
         } catch (e) {}
       });
+
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (sourceRef.current)
         try {

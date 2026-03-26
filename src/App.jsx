@@ -552,6 +552,36 @@ export default function App() {
     return () => clearInterval(t);
   }, [handSignals]);
 
+  // Initialize audio track on precall screen (even if mic is off)
+  useEffect(() => {
+    if (screen === "precall" && !localAudioTrackRef.current) {
+      (async () => {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              noiseSuppression: noiseSuppression,
+              echoCancellation: true,
+              autoGainControl: true,
+            },
+          });
+          const audioTrack = micStream.getAudioTracks()[0];
+          if (audioTrack) {
+            // Set enabled state based on micOn
+            audioTrack.enabled = micOn;
+            localAudioTrackRef.current = audioTrack;
+            const newStream = stream || new MediaStream();
+            try {
+              newStream.addTrack(audioTrack);
+            } catch (e) {}
+            setStream(newStream);
+          }
+        } catch (e) {
+          console.warn("Failed to initialize audio track:", e);
+        }
+      })();
+    }
+  }, [screen, noiseSuppression]);
+
   useEffect(() => {
     if (screen === "lobby") {
       const name = tempName.trim();
