@@ -28,11 +28,13 @@ export const createPeerConnectionFor = (
   };
 
   pc.ontrack = (e) => {
+    console.log('ontrack for', id, '- track kind:', e.track.kind, 'enabled:', e.track.enabled);
     setRemoteStreams((prev) => {
       let peerStream = prev[id] || new MediaStream();
       if (e.track && !peerStream.getTracks().some((t) => t.id === e.track.id)) {
         try {
           peerStream.addTrack(e.track);
+          console.log('Track added for', id, '- stream now has', peerStream.getTracks().length, 'tracks');
         } catch (error) {
           console.warn("Failed to add track:", error);
         }
@@ -49,6 +51,7 @@ export const createPeerConnectionFor = (
       } catch (error) {
         console.warn("Failed to watch remote stream:", error);
       }
+      console.log('Remote stream for', id, 'updated, audio tracks:', peerStream.getAudioTracks().length);
       return { ...prev, [id]: peerStream };
     });
   };

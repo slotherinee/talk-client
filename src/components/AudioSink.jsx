@@ -18,8 +18,11 @@ function AudioSink({ stream, muted, volume = 1 }) {
   useEffect(() => {
     const el = audioRef.current
     if (!el) return
+    console.log('AudioSink: setting srcObject, stream tracks:', stream?.getTracks?.().length || 0, 'muted:', muted)
     el.srcObject = stream || null
-    if (stream && !muted) el.play().catch(() => {})
+    if (stream && !muted) {
+      el.play().catch((e) => console.warn('AudioSink: play() failed:', e.message))
+    }
   }, [stream, muted])
 
   // Build Web Audio graph when stream/muted changes
@@ -41,7 +44,10 @@ function AudioSink({ stream, muted, volume = 1 }) {
 
     try {
       const ctx = getSharedCtx()
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+      console.log('AudioSink: AudioContext state:', ctx.state)
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => console.warn('AudioSink: resume() failed'))
+      }
       const source = ctx.createMediaStreamSource(stream)
       const gain = ctx.createGain()
       gain.gain.value = Math.max(0, volume)
@@ -49,14 +55,16 @@ function AudioSink({ stream, muted, volume = 1 }) {
       gain.connect(ctx.destination)
       sourceRef.current = source
       gainRef.current = gain
+      console.log('AudioSink: Web Audio graph built, volume:', volume)
       // Mute the audio element — Web Audio handles actual output
       if (audioRef.current) audioRef.current.muted = true
     } catch (e) {
       // Web Audio failed: fall back to native audio element (volume capped at 1)
-      console.warn('AudioSink: Web Audio failed, using fallback:', e.message)
+      console.warn('AudioSink: Web Audio failed:', e.message)
       if (audioRef.current) {
         audioRef.current.muted = false
         audioRef.current.volume = Math.min(1, Math.max(0, volume))
+        console.log('AudioSink: using fallback, audio.volume:', audioRef.current.volume)
       }
     }
 
@@ -75,11 +83,17 @@ function AudioSink({ stream, muted, volume = 1 }) {
   // Update gain value when volume changes
   useEffect(() => {
     if (gainRef.current) {
-      gainRef.current.gain.value = muted ? 0 : Math.max(0, volume)
+      const newVal = muted ? 0 : Math.max(0, volume)
+      gainRef.current.gain.value = newVal
+      console.log('AudioSink: GainNode updated, value:', newVal)
       const ctx = gainRef.current.context
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => console.warn('AudioSink: resume() failed'))
+      }
     } else if (audioRef.current && !audioRef.current.muted) {
-      audioRef.current.volume = muted ? 0 : Math.min(1, Math.max(0, volume))
+      const newVal = muted ? 0 : Math.min(1, Math.max(0, volume))
+      audioRef.current.volume = newVal
+      console.log('AudioSink: audio.volume updated:', newVal)
     }
   }, [volume, muted])
 
