@@ -20,10 +20,14 @@ export const createPeerConnectionFor = (
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
+      const type = e.candidate.candidate.split(" ")[7] || "unknown";
+      console.log(`[ICE] Gathered ${type} candidate for ${id}`);
       const currentSocket = getSocket();
       if (currentSocket) {
         currentSocket.emit("candidate-to", id, e.candidate);
       }
+    } else {
+      console.log(`[ICE] Gathering complete for ${id}`);
     }
   };
 
@@ -57,9 +61,10 @@ export const createPeerConnectionFor = (
   };
 
   pc.onconnectionstatechange = () => {
-    console.log("Connection state for", id, ":", pc.connectionState);
+    const iceStats = pc.getStats ? "ICE state: " + pc.iceConnectionState : "";
+    console.log(`[CONN] State for ${id}: ${pc.connectionState} (${iceStats})`);
     if (pc.connectionState === "failed") {
-      console.warn("Connection failed for", id, "attempting restart");
+      console.warn(`[CONN] ⚠️ Connection FAILED for ${id}, restarting ICE...`);
       pc.restartIce();
     }
   };

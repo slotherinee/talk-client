@@ -346,28 +346,32 @@ export default function App() {
 
     socket.on("answer", async (fromId, description) => {
       const pc = pcs.current[fromId];
-      if (!pc) return;
+      if (!pc) {
+        console.warn(`[ANSWER] No PC found for answer from ${fromId}`);
+        return;
+      }
       try {
         const state = pc.signalingState;
-        console.log(`📥 Received answer from ${fromId}, state=${state}`);
+        console.log(`[ANSWER] Received answer from ${fromId}, state=${state}`);
         if (
           state === "have-local-offer" ||
           state === "have-local-pranswer" ||
           state === "have-remote-offer"
         ) {
           await pc.setRemoteDescription(description);
-          console.log(`✅ Remote description set for ${fromId}, buffer=${iceCandidateBufferRef.current[fromId]?.length || 0} candidates`);
+          console.log(`[ANSWER] Remote description set for ${fromId}`);
           await drainIceCandidates(fromId);
         } else {
-          console.warn("Received answer in unexpected signaling state", state);
+          console.warn("[ANSWER] Unexpected signaling state:", state);
         }
       } catch (e) {
-        console.warn("setRemoteDescription failed for answer", e);
+        console.warn("[ANSWER] setRemoteDescription failed:", e.message);
       }
     });
 
     socket.on("candidate", async (fromId, candidate) => {
       const pc = pcs.current[fromId];
+      const type = candidate.candidate.split(" ")[7] || "unknown";
 
       // Buffer candidates if PC not ready or no remote description yet
       if (!pc || !pc.remoteDescription) {
@@ -376,8 +380,8 @@ export default function App() {
         }
         // Prevent buffer from growing too large (memory leak prevention)
         if (iceCandidateBufferRef.current[fromId].length < 100) {
-          const bufLen = iceCandidateBufferRef.current[fromId].push(candidate);
-          console.log(`📦 Buffered candidate from ${fromId} (buffer size=${bufLen}, hasPC=${!!pc}, hasRemoteDesc=${pc?.remoteDescription ? 'yes' : 'no'})`);
+          iceCandidateBufferRef.current[fromId].push(candidate);
+          console.log(`[CAND] Buffered ${type} candidate from ${fromId} (buffer size=${iceCandidateBufferRef.current[fromId].length})`);
         } else {
           console.warn("🧊 ICE candidate buffer too large, dropping candidates");
         }
@@ -387,11 +391,11 @@ export default function App() {
       // Add candidate if PC is ready
       if (!candidate) return;
       try {
-        console.log(`🔗 Adding candidate from ${fromId} directly (remoteDesc ready)`);
+        console.log(`[CAND] Adding ${type} candidate from ${fromId} directly`);
         await pc.addIceCandidate(candidate);
       } catch (e) {
         // Ignore errors - invalid candidates are normal and can be safely ignored
-        console.debug("ICE candidate add error (normal):", e.message?.slice(0, 50));
+        console.debug("[CAND] Error adding candidate (normal):", e.message?.slice(0, 50));
       }
     });
     socket.on("room-join-ok", (info) => {
@@ -628,20 +632,18 @@ export default function App() {
           if (pc.signalingState === "stable" && !makingOfferRef.current[id]) {
             // Only impolite (smaller ID) makes the offer
             if (!isPolite) {
-              console.log(`📤 Creating offer for ${id} (impolite, state=${pc.signalingState})`);
+              console.log(`[OFFER] Creating offer for ${id} (I'm impolite, my ID < theirs)`);
               makingOfferRef.current[id] = true;
               try {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
-                console.log(`📤 Sent offer to ${id}, remoteDesc=${!!pc.remoteDescription}`);
+                console.log(`[OFFER] Sent offer to ${id}`);
                 if (socket) socket.emit("offer-to", id, offer);
               } catch (offerError) {
-                console.warn("Failed to create/send offer:", offerError);
+                console.warn("[OFFER] Failed to create/send offer:", offerError);
               }
               makingOfferRef.current[id] = false;
             }
-          } else {
-            console.log(`⏭️ Skipping offer for ${id}: state=${pc.signalingState}, making=${makingOfferRef.current[id]}, polite=${isPolite}`);
           }
         } catch (e) {
           console.warn("auto-offer failed", e);
@@ -788,33 +790,34 @@ export default function App() {
   const drainIceCandidates = async (peerId) => {
     const pc = pcs.current[peerId];
     if (!pc) {
-      console.warn("❌ No PC found for draining candidates:", peerId);
+      console.warn("[DRAIN] No PC found for draining candidates:", peerId);
+      return;
+    }
+
+    // Check if remote description is set
+    if (!pc.remoteDescription) {
+      console.log(`[DRAIN] Skipping drain for ${peerId}: remote description not set yet`);
       return;
     }
 
     const buffer = iceCandidateBufferRef.current[peerId] || [];
-    const hasRemoteDesc = !!pc.remoteDescription;
-
-    console.log(`🧊 Drain check for ${peerId}: buffer=${buffer.length}, hasRemoteDesc=${hasRemoteDesc}, state=${pc.signalingState}`);
-
-    // Check if remote description is set
-    if (!pc.remoteDescription) {
-      console.warn("⚠️ Remote description not set yet for", peerId, "- buffer will drain on answer");
+    if (buffer.length === 0) {
+      console.log(`[DRAIN] No buffered candidates for ${peerId}`);
       return;
     }
 
-    if (buffer.length === 0) return;
-
-    console.log(`🧊 Draining ${buffer.length} ICE candidates for ${peerId}`);
+    console.log(`[DRAIN] Draining ${buffer.length} buffered ICE candidates for ${peerId}`);
     iceCandidateBufferRef.current[peerId] = [];
 
     for (const candidate of buffer) {
       if (!candidate) continue;
       try {
+        const type = candidate.candidate.split(" ")[7] || "unknown";
+        console.log(`[DRAIN] Adding buffered ${type} candidate for ${peerId}`);
         await pc.addIceCandidate(candidate);
       } catch (e) {
         // Ignore errors for invalid candidates (this is normal)
-        console.debug("ICE candidate error (this is normal):", e.message);
+        console.debug("[DRAIN] Error (normal):", e.message?.slice(0, 50));
       }
     }
   };
@@ -830,7 +833,7 @@ export default function App() {
   };
 
   const handleOfferFromPeer = async (id, description) => {
-    console.log(`📨 Received offer from ${id}, processing...`);
+    console.log(`[OFFER] Received offer from ${id}`);
     await handleOffer(
       id,
       description,
@@ -842,7 +845,7 @@ export default function App() {
       addLocalTracksToPC,
       getSocket
     );
-    console.log(`✅ Handled offer from ${id}, draining buffer...`);
+    console.log(`[OFFER] Handled offer from ${id}, sending answer...`);
     await drainIceCandidates(id);
   };
 
