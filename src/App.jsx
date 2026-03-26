@@ -585,34 +585,59 @@ export default function App() {
     return () => clearInterval(t);
   }, [handSignals]);
 
-  // Initialize audio track on precall screen (even if mic is off)
+  // Initialize audio track when entering lobby (right before joining call)
   useEffect(() => {
-    if (screen === "precall" && !localAudioTrackRef.current) {
+    if (screen === "lobby" && !localAudioTrackRef.current) {
       (async () => {
         try {
-          const { buildAudioConstraints } = await import("./utils/deviceUtils");
-          const audioConstraints = buildAudioConstraints(noiseSuppression);
+          console.log("🎤 Requesting microphone...");
+
+          // Try with noise suppression first
+          let audioConstraints = {
+            echoCancellation: true,
+            autoGainControl: true,
+          };
+
+          // Try with noise suppression
+          if (noiseSuppression) {
+            try {
+              audioConstraints.noiseSuppression = true;
+            } catch (e) {}
+          }
 
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
           });
+
           const audioTrack = micStream.getAudioTracks()[0];
           if (audioTrack) {
-            // Set enabled state based on micOn
+            console.log("✅ Microphone granted");
             audioTrack.enabled = micOn;
             localAudioTrackRef.current = audioTrack;
             const newStream = stream || new MediaStream();
             try {
               newStream.addTrack(audioTrack);
-            } catch (e) {}
+            } catch (e) {
+              console.warn("Failed to add audio track to stream:", e);
+            }
             setStream(newStream);
           }
         } catch (e) {
-          console.warn("Failed to initialize audio track:", e);
+          console.error("❌ Microphone error:", e.name, e.message);
+
+          // Don't block the user - show warning but allow them to continue
+          if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+            setMediaError("Вы запретили доступ к микрофону. Можете включить его позже.");
+          } else if (e.name === "NotFoundError") {
+            setMediaError("Микрофон не найден. Звонок может работать без звука.");
+          } else {
+            setMediaError(`Ошибка микрофона: ${e.name || "неизвестная ошибка"}`);
+          }
+          // User can still continue even without microphone
         }
       })();
     }
-  }, [screen, noiseSuppression]);
+  }, [screen]);
 
   useEffect(() => {
     if (screen === "lobby") {
