@@ -26,7 +26,6 @@ import useMountTransition from "./hooks/useMountTransition";
 // Screen components
 import JoinScreen from "./screens/JoinScreen";
 import PrecallScreen from "./screens/PrecallScreen";
-import LobbyScreen from "./screens/LobbyScreen";
 import CallScreen from "./screens/CallScreen";
 
 export default function App() {
@@ -582,15 +581,6 @@ export default function App() {
   }, [handSignals]);
 
 
-  useEffect(() => {
-    if (screen === "lobby") {
-      const name = tempName.trim();
-      setUsername(name); // keep applied
-      const socket = getSocket();
-      if (roomId && socket)
-        socket.emit("set-username", roomId, name || socket.id);
-    }
-  }, [tempName, screen, roomId]);
 
   useEffect(() => {
     const prev = prevMembersRef.current || [];
@@ -1091,10 +1081,6 @@ export default function App() {
     setScreen("precall");
   };
 
-  const handlePrecallStart = async () => {
-    if (localVideo.current && stream) localVideo.current.srcObject = stream;
-    setScreen("lobby");
-  };
 
   const applyUsername = () => {
     const socket = getSocket();
@@ -1461,17 +1447,6 @@ export default function App() {
         mediaError={mediaError}
         noiseSuppression={noiseSuppression}
         onNoiseSuppressionChange={setNoiseSuppression}
-      />
-    );
-  }
-
-  if (screen === "lobby") {
-    return (
-      <LobbyScreen
-        roomId={roomId}
-        tempName={tempName}
-        setTempName={setTempName}
-        startCall={startCall}
       />
     );
   }
