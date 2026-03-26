@@ -273,6 +273,26 @@ export default function App() {
         if (remainingMs !== null)
           setRemainingMs((r) => (r !== null ? Math.max(0, r - 1000) : r));
       }, 1000);
+
+      // Resume audio context on user gesture (click/touch)
+      const resumeAudioContext = async () => {
+        try {
+          if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+            await audioContextRef.current.resume();
+            console.log("✅ AudioContext resumed");
+          }
+        } catch (e) {
+          console.warn("Failed to resume audio context:", e);
+        }
+      };
+
+      window.addEventListener("click", resumeAudioContext);
+      window.addEventListener("touchstart", resumeAudioContext);
+
+      return () => {
+        window.removeEventListener("click", resumeAudioContext);
+        window.removeEventListener("touchstart", resumeAudioContext);
+      };
     }
     return () => {
       if (int) clearInterval(int);
@@ -623,11 +643,13 @@ export default function App() {
             console.warn("Failed to add tracks to new PC:", e);
           }
 
-          await new Promise((resolve) => setTimeout(resolve, 100));
-
           // Polite/impolite logic: compare socket IDs to prevent offer collision
           const myId = socket?.id || "";
-          const isPolite = myId > id; // Larger ID is polite (waits for offer)
+          const isPolite = myId > id;
+
+          // Add random jitter to prevent collision (300-500ms for impolite)
+          const delay = isPolite ? 100 : 300 + Math.random() * 200;
+          await new Promise((resolve) => setTimeout(resolve, delay)); // Larger ID is polite (waits for offer)
 
           if (pc.signalingState === "stable" && !makingOfferRef.current[id]) {
             // Only impolite (smaller ID) makes the offer
@@ -1140,6 +1162,10 @@ export default function App() {
       try {
         addLocalTracksToPC(pc);
       } catch (e) {}
+
+      // Wait a bit before creating offer to ensure tracks are added
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       if (socket) socket.emit("offer-to", memberId, offer);
