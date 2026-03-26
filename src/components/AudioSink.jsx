@@ -9,66 +9,74 @@ function getSharedCtx() {
   return sharedCtx
 }
 
-// Resume shared context on user gesture
-if (typeof window !== 'undefined') {
-  const resume = () => {
-    if (sharedCtx && sharedCtx.state === 'suspended') sharedCtx.resume().catch(() => {})
-  }
-  window.addEventListener('click', resume)
-  window.addEventListener('touchstart', resume)
-}
-
 function AudioSink({ stream, muted, volume = 1 }) {
-  const audioRef = useRef()
   const gainRef = useRef(null)
-  const graphBuiltRef = useRef(false)
+  const sourceRef = useRef(null)
 
-  const buildGraph = () => {
-    const el = audioRef.current
-    if (!el || graphBuiltRef.current || muted) return
+  // Build/rebuild Web Audio graph when stream or muted changes
+  useEffect(() => {
+    // Disconnect previous graph
+    if (sourceRef.current) {
+      try { sourceRef.current.disconnect() } catch {}
+      sourceRef.current = null
+    }
+    if (gainRef.current) {
+      try { gainRef.current.disconnect() } catch {}
+      gainRef.current = null
+    }
+
+    if (!stream || muted) return
+
     try {
       const ctx = getSharedCtx()
-      const gain = ctx.createGain()
-      ctx.createMediaElementSource(el).connect(gain)
-      gain.connect(ctx.destination)
-      gain.gain.value = Math.max(0, volume)
-      gainRef.current = gain
-      graphBuiltRef.current = true
-    } catch (e) {
-      // element may already be connected or no stream yet — retry on next stream change
-    }
-  }
-
-  // Set stream and build graph once stream arrives
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-    el.srcObject = stream || null
-    if (stream && !muted) {
-      el.play().catch(() => {})
-      // Build graph now that the element has a stream
-      if (!graphBuiltRef.current) buildGraph()
-    }
-  }, [stream]) // eslint-disable-line
-
-  // Update gain / volume
-  useEffect(() => {
-    if (muted) return
-    const val = Math.max(0, volume)
-    if (gainRef.current) {
-      gainRef.current.gain.value = val
-      // Also resume context if suspended
-      const ctx = gainRef.current.context
       if (ctx.state === 'suspended') ctx.resume().catch(() => {})
-    } else {
-      // Fallback: no GainNode yet, use audio.volume (capped at 1)
-      if (audioRef.current) audioRef.current.volume = Math.min(1, val)
+      const source = ctx.createMediaStreamSource(stream)
+      const gain = ctx.createGain()
+      gain.gain.value = Math.max(0, volume)
+      source.connect(gain)
+      gain.connect(ctx.destination)
+      sourceRef.current = source
+      gainRef.current = gain
+    } catch (e) {
+      console.warn('AudioSink: Web Audio failed:', e.message)
     }
-  }, [volume, muted]) // eslint-disable-line
 
-  return (
-    <audio ref={audioRef} autoPlay playsInline muted={muted} className="hidden" />
-  )
+    return () => {
+      if (sourceRef.current) {
+        try { sourceRef.current.disconnect() } catch {}
+        sourceRef.current = null
+      }
+      if (gainRef.current) {
+        try { gainRef.current.disconnect() } catch {}
+        gainRef.current = null
+      }
+    }
+  }, [stream, muted])
+
+  // Update gain value when volume changes
+  useEffect(() => {
+    if (!gainRef.current) return
+    gainRef.current.gain.value = muted ? 0 : Math.max(0, volume)
+    const ctx = gainRef.current.context
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+  }, [volume, muted])
+
+  // Resume AudioContext on user gesture
+  useEffect(() => {
+    const resume = () => {
+      if (sharedCtx && sharedCtx.state === 'suspended') {
+        sharedCtx.resume().catch(() => {})
+      }
+    }
+    window.addEventListener('click', resume)
+    window.addEventListener('touchstart', resume)
+    return () => {
+      window.removeEventListener('click', resume)
+      window.removeEventListener('touchstart', resume)
+    }
+  }, [])
+
+  return null
 }
 
 export default AudioSink
