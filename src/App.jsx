@@ -266,6 +266,16 @@ export default function App() {
 
   useEffect(() => {
     let int;
+
+    // Resume audio context on user gesture (click/touch)
+    const resumeAudioContext = async () => {
+      try {
+        if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+          await audioContextRef.current.resume();
+        }
+      } catch (e) {}
+    };
+
     if (screen === "call") {
       if (!callStartTs) setCallStartTs(Date.now());
       int = setInterval(() => {
@@ -274,28 +284,14 @@ export default function App() {
           setRemainingMs((r) => (r !== null ? Math.max(0, r - 1000) : r));
       }, 1000);
 
-      // Resume audio context on user gesture (click/touch)
-      const resumeAudioContext = async () => {
-        try {
-          if (audioContextRef.current && audioContextRef.current.state === "suspended") {
-            await audioContextRef.current.resume();
-            console.log("✅ AudioContext resumed");
-          }
-        } catch (e) {
-          console.warn("Failed to resume audio context:", e);
-        }
-      };
-
       window.addEventListener("click", resumeAudioContext);
       window.addEventListener("touchstart", resumeAudioContext);
-
-      return () => {
-        window.removeEventListener("click", resumeAudioContext);
-        window.removeEventListener("touchstart", resumeAudioContext);
-      };
     }
+
     return () => {
       if (int) clearInterval(int);
+      window.removeEventListener("click", resumeAudioContext);
+      window.removeEventListener("touchstart", resumeAudioContext);
     };
   }, [screen, callStartTs, remainingMs]);
 

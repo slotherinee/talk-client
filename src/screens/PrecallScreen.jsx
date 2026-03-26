@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import Button from "../components/Button";
 import Input from "../components/Input";
 import MicActivityDot from "../components/MicActivityDot";
@@ -29,6 +30,17 @@ function PrecallScreen({
   noiseSuppression,
   onNoiseSuppressionChange,
 }) {
+  // Anti-ghost-click: delay button readiness after socket connects (Android fix)
+  const [readyToJoin, setReadyToJoin] = useState(false);
+  useEffect(() => {
+    if (!socketConnected) {
+      setReadyToJoin(false);
+      return;
+    }
+    const t = setTimeout(() => setReadyToJoin(true), 600);
+    return () => clearTimeout(t);
+  }, [socketConnected]);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh bg-black px-4">
       <div className="rounded-xl shadow-lg p-8 w-full max-w-xl border border-neutral-800 bg-neutral-900">
@@ -126,13 +138,18 @@ function PrecallScreen({
 
         <Button
           className="w-full"
-          onClick={startCall}
-          disabled={!socketConnected}
+          onClick={readyToJoin ? startCall : undefined}
+          disabled={!readyToJoin}
         >
           {!socketConnected ? (
             <>
               <Loader2 size={16} className="animate-spin" />
               Подключение...
+            </>
+          ) : !readyToJoin ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              Подготовка...
             </>
           ) : (
             "Войти в звонок"
