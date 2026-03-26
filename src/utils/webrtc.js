@@ -61,12 +61,20 @@ export const createPeerConnectionFor = (
   };
 
   pc.onconnectionstatechange = () => {
-    const iceStats = pc.getStats ? "ICE state: " + pc.iceConnectionState : "";
-    console.log(`[CONN] State for ${id}: ${pc.connectionState} (${iceStats})`);
+    const iceState = pc.iceConnectionState;
+    const signalingState = pc.signalingState;
+    console.log(`[CONN] State: ${pc.connectionState} | ICE: ${iceState} | Signaling: ${signalingState}`);
     if (pc.connectionState === "failed") {
-      console.warn(`[CONN] ⚠️ Connection FAILED for ${id}, restarting ICE...`);
+      console.warn(`[CONN] ⚠️ FAILED for ${id}, restarting ICE...`);
       pc.restartIce();
+    } else if (pc.connectionState === "connected") {
+      console.log(`[CONN] ✅ CONNECTED for ${id}!`);
     }
+  };
+
+  // Also log ICE connection state changes
+  pc.oniceconnectionstatechange = () => {
+    console.log(`[ICE-STATE] ${id}: ${pc.iceConnectionState}`);
   };
 
   pcs.current[id] = pc;
