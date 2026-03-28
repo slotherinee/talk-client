@@ -29,7 +29,7 @@ function VideoTile({
       autoPlay
       playsInline
       muted={muted}
-      className={`size-full object-cover object-center ${
+      className={`size-full object-contain object-center ${
         shouldMirror ? "transform -scale-x-100" : ""
       }`}
     />

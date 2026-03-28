@@ -127,7 +127,7 @@ function PrecallScreen({
               autoPlay
               muted
               playsInline
-              className="w-full h-36 rounded-lg bg-black border border-neutral-800 object-cover transform -scale-x-100"
+              className="w-full h-36 rounded-lg bg-black border border-neutral-800 object-contain transform -scale-x-100"
             />
           ) : (
             <div className="w-full h-36 rounded-lg bg-neutral-800 border border-neutral-800 flex items-center justify-center text-neutral-500">
